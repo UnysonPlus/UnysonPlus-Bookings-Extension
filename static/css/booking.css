@@ -1,0 +1,86 @@
+/* Bookings: the "Dates and availability" field. Inherits fonts; colours are custom properties so a theme can retint it. */
+.fw-bk {
+	--fw-bk-ink: currentColor;
+	--fw-bk-muted: color-mix(in srgb, currentColor 62%, transparent);
+	--fw-bk-line: color-mix(in srgb, currentColor 16%, transparent);
+	--fw-bk-soft: color-mix(in srgb, currentColor 6%, transparent);
+	--fw-bk-accent: var(--fw-color-primary, #2f74e6);
+	--fw-bk-accent-ink: #fff;
+	--fw-bk-accent-soft: color-mix(in srgb, var(--fw-bk-accent) 16%, transparent);
+	--fw-bk-taken: color-mix(in srgb, currentColor 32%, transparent);
+	margin: 0 0 .5rem;
+}
+.fw-bk *, .fw-bk *::before, .fw-bk *::after { box-sizing: border-box; }
+.fw-bk.is-loading .fw-bk__months { opacity: .6; transition: opacity .2s; }
+.fw-bk__grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, 1fr); gap: clamp(18px, 3vw, 36px); align-items: start; }
+.fw-bk__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.fw-bk__hint { margin: 0; font-size: .9375rem; color: var(--fw-bk-muted); text-align: center; }
+.fw-bk__hint.is-warn { color: var(--fw-bk-accent); font-weight: 600; }
+.fw-bk__nav { width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1px solid var(--fw-bk-line); background: transparent; color: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0; }
+.fw-bk__nav:hover { background: var(--fw-bk-soft); }
+.fw-bk__months { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; }
+.fw-bk__month { max-width: 380px; }
+.fw-bk__month h4 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; text-align: center; }
+.fw-bk__dow, .fw-bk__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.fw-bk__dow span { font-size: .75rem; color: var(--fw-bk-muted); text-align: center; padding: 4px 0 6px; }
+.fw-bk__day { position: relative; aspect-ratio: 1; min-height: 36px; margin: 1px 0; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-size: .9375rem; font-variant-numeric: tabular-nums; cursor: pointer; border-radius: 999px; }
+.fw-bk__day:hover:not(:disabled) { background: var(--fw-bk-soft); }
+.fw-bk__day:focus-visible { outline: 2px solid var(--fw-bk-accent); outline-offset: 1px; }
+.fw-bk__day.is-peak::after { content: ""; position: absolute; left: 50%; bottom: 12%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; opacity: .55; }
+.fw-bk__day.is-past { color: var(--fw-bk-taken); cursor: default; }
+.fw-bk__day.is-past::after, .fw-bk__day.is-taken::after { display: none; }
+.fw-bk__day.is-taken { color: var(--fw-bk-taken); text-decoration: line-through; cursor: not-allowed; }
+.fw-bk__day.is-mid { background: var(--fw-bk-accent-soft); border-radius: 0; }
+.fw-bk__day.is-preview { background: var(--fw-bk-soft); }
+.fw-bk__day.is-start, .fw-bk__day.is-end { background: var(--fw-bk-accent); color: var(--fw-bk-accent-ink); text-decoration: none; }
+.fw-bk__times { margin-top: 14px; }
+.fw-bk__times-title { margin: 0 0 8px; font-weight: 600; font-size: .9375rem; }
+.fw-bk__time-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.fw-bk__time { min-width: 76px; min-height: 40px; padding: 6px 12px; border: 1px solid var(--fw-bk-line); border-radius: 8px; background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
+.fw-bk__time small { display: block; font-size: .72rem; color: var(--fw-bk-muted); }
+.fw-bk__time:hover:not(:disabled) { border-color: currentColor; }
+.fw-bk__time.is-on { background: var(--fw-bk-accent); border-color: var(--fw-bk-accent); color: var(--fw-bk-accent-ink); }
+.fw-bk__time.is-on small { color: inherit; }
+.fw-bk__time:disabled { color: var(--fw-bk-taken); text-decoration: line-through; cursor: not-allowed; }
+.fw-bk__side { display: flex; flex-direction: column; gap: 12px; }
+.fw-bk__dates { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--fw-bk-line); border-radius: 12px; overflow: hidden; }
+.fw-bk__dates--one { grid-template-columns: 1fr; }
+.fw-bk__dates > div { padding: 10px 12px; }
+.fw-bk__dates > div + div { border-left: 1px solid var(--fw-bk-line); }
+.fw-bk__dates span, .fw-bk__guests > span { display: block; font-size: .8125rem; font-weight: 600; color: var(--fw-bk-muted); margin-bottom: 3px; }
+.fw-bk__dates strong { font-size: .97rem; font-weight: 600; }
+.fw-bk__guests { display: block; margin: 0; width: auto; font-weight: 400; }
+.fw-bk__guests select { width: 100%; }
+.fw-bk__from { margin: 2px 0; color: var(--fw-bk-muted); }
+.fw-bk__table { width: 100%; border-collapse: collapse; font-size: .9375rem; margin: 0; }
+.fw-bk__table th { text-align: left; font-weight: 400; padding: 6px 0; border: 0; }
+.fw-bk__table td { text-align: right; padding: 6px 0; border: 0; font-variant-numeric: tabular-nums; }
+.fw-bk__table small { color: var(--fw-bk-muted); font-size: .8125rem; }
+.fw-bk__total th, .fw-bk__total td { border-top: 1px solid var(--fw-bk-line) !important; padding-top: 10px; font-weight: 700; font-size: 1.0625rem; }
+.fw-bk__small { font-size: .8125rem; color: var(--fw-bk-muted); margin: 4px 0 0; line-height: 1.5; }
+.fw-bk__link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+@media (max-width: 900px) { .fw-bk__grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .fw-bk__month--extra { display: none; } }
+@media (prefers-reduced-motion: reduce) { .fw-bk * { transition: none !important; } }
+
+/* Inside a form: the fieldset, and the plain controls used without JavaScript. */
+.wrap-forms fieldset.field-booking { border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+.wrap-forms fieldset.field-booking > legend { font-size: 15px; font-weight: 700; margin-bottom: .6rem; padding: 0; }
+.fw-bk-plain { display: grid; grid-template-columns: 1fr 1fr 120px; gap: 12px; }
+.fw-bk-plain label { display: flex; flex-direction: column; gap: 4px; margin: 0; width: auto; font-weight: 400; }
+.fw-bk-plain[hidden] { display: none !important; }
+@media (max-width: 600px) { .fw-bk-plain { grid-template-columns: 1fr; } }
+
+/* The guest's booking page (?fw_booking_ref=…). */
+.fw-booking-page { padding: clamp(32px, 6vw, 80px) 16px; }
+.fw-booking-page__inner { max-width: 640px; margin: 0 auto; }
+.fw-booking-page h1 { margin: 0 0 .4em; }
+.fw-booking-page__status { display: inline-block; margin: 0 0 1.2em; padding: .3em .8em; border-radius: 999px; font-weight: 600; background: color-mix(in srgb, currentColor 8%, transparent); }
+.fw-booking-page__status--confirmed { color: #0f6b3a; background: #e3f4ea; }
+.fw-booking-page__status--pending { color: #8a5a00; background: #fff4d6; }
+.fw-booking-page__status--cancelled, .fw-booking-page__status--declined { color: #8a1f17; background: #fdecea; }
+.fw-booking-page__facts { display: grid; grid-template-columns: auto 1fr; gap: .55em 1.5em; margin: 0 0 1.6em; }
+.fw-booking-page__facts dt { font-weight: 600; opacity: .75; }
+.fw-booking-page__facts dd { margin: 0; }
+.fw-booking-page__cancel button { min-height: 44px; padding: .6em 1.3em; border: 1px solid currentColor; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.fw-booking-page__note { opacity: .8; }
