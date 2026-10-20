@@ -51,7 +51,7 @@ $manifest['description'] = __(
  *         REST GET /fw-bookings/v1/availability; filter fw_ext_bookings_busy for other calendars.
  */
 
-$manifest['version']    = '1.0.2';
+$manifest['version']    = '1.0.3';
 $manifest['display']    = true;
 $manifest['standalone'] = true;
 $manifest['thumbnail']  = 'thumbnail.svg';
