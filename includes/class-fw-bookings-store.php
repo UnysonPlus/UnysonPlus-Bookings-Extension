@@ -12,7 +12,7 @@
  */
 class FW_Bookings_Store {
 
-	const DB_VERSION        = '1.1.0';
+	const DB_VERSION        = '1.2.0';
 	const DB_VERSION_OPTION = 'fw_ext_bookings_db_version';
 
 	const STATUSES = array( 'pending', 'confirmed', 'declined', 'cancelled' );
@@ -54,6 +54,9 @@ class FW_Bookings_Store {
 	token varchar(32) NOT NULL default '',
 	crm_contact bigint(20) unsigned NOT NULL default 0,
 	crm_deal bigint(20) unsigned NOT NULL default 0,
+	extras text NULL,
+	reminded_at datetime NOT NULL default '0000-00-00 00:00:00',
+	thanked_at datetime NOT NULL default '0000-00-00 00:00:00',
 	created_at datetime NOT NULL default '0000-00-00 00:00:00',
 	updated_at datetime NOT NULL default '0000-00-00 00:00:00',
 	PRIMARY KEY  (id),
@@ -83,7 +86,8 @@ class FW_Bookings_Store {
 
 	/**
 	 * @param array $d bookable_id, start_at, end_at, and optional kind, status, units, guests, name, email,
-	 *                 phone, notes, total, deposit, currency, source, entry_id, user_id, ref
+	 *                 phone, notes, total, deposit, currency, source, entry_id, user_id, ref,
+	 *                 extras (the quote's chosen extras: [ { key, name, qty, amount } ]), created_at
 	 * @return int|WP_Error
 	 */
 	public static function insert( array $d ) {
@@ -109,7 +113,8 @@ class FW_Bookings_Store {
 			'entry_id'    => (int) ( $d['entry_id'] ?? 0 ),
 			'user_id'     => (int) ( $d['user_id'] ?? 0 ),
 			'token'       => wp_generate_password( 32, false ),
-			'created_at'  => $now,
+			'extras'      => ! empty( $d['extras'] ) ? wp_json_encode( array_values( (array) $d['extras'] ) ) : null,
+			'created_at'  => ! empty( $d['created_at'] ) && self::valid_datetime( $d['created_at'] ) ? $d['created_at'] : $now,
 			'updated_at'  => $now,
 		);
 		if ( ! $row['bookable_id'] || ! self::valid_datetime( $row['start_at'] ) || ! self::valid_datetime( $row['end_at'] ) || $row['end_at'] <= $row['start_at'] ) {
@@ -152,6 +157,8 @@ class FW_Bookings_Store {
 		$r->total   = (float) $r->total;
 		$r->deposit = (float) $r->deposit;
 		$r->paid    = (float) ( $r->paid ?? 0 );
+		$x          = isset( $r->extras ) && is_string( $r->extras ) ? json_decode( $r->extras, true ) : null;
+		$r->extras  = is_array( $x ) ? $x : array();
 		return $r;
 	}
 
@@ -180,12 +187,32 @@ class FW_Bookings_Store {
 	/** Update bookkeeping columns of one row (not its time or status: use set_status() for that). */
 	public static function update( $id, array $data ) {
 		global $wpdb;
-		$allowed = array_intersect_key( $data, array_flip( array( 'paid', 'entry_id', 'crm_contact', 'crm_deal', 'notes', 'name', 'email', 'phone' ) ) );
+		$allowed = array_intersect_key( $data, array_flip( array( 'paid', 'entry_id', 'crm_contact', 'crm_deal', 'notes', 'name', 'email', 'phone', 'reminded_at', 'thanked_at' ) ) );
 		if ( ! $allowed ) {
 			return false;
 		}
 		$allowed['updated_at'] = current_time( 'mysql' );
 		return false !== $wpdb->update( self::table(), $allowed, array( 'id' => (int) $id ) );
+	}
+
+	/**
+	 * Confirmed bookings of a bookable whose start (or end) falls in [from, to) and that have not had
+	 * this email yet — what the reminders send. $mark is reminded_at or thanked_at.
+	 *
+	 * @return object[]
+	 */
+	public static function due( $bookable_id, $column, $from, $to, $mark ) {
+		global $wpdb;
+		if ( ! in_array( $column, array( 'start_at', 'end_at' ), true ) || ! in_array( $mark, array( 'reminded_at', 'thanked_at' ), true ) ) {
+			return array();
+		}
+		$rows = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL
+			'SELECT * FROM ' . self::table() . " WHERE bookable_id = %d AND kind = 'booking' AND status = 'confirmed' AND {$column} >= %s AND {$column} < %s AND {$mark} = '0000-00-00 00:00:00' AND email <> '' ORDER BY {$column} ASC LIMIT 200",
+			(int) $bookable_id,
+			$from,
+			$to
+		) );
+		return array_map( array( __CLASS__, 'hydrate' ), (array) $rows );
 	}
 
 	public static function delete( $id ) {

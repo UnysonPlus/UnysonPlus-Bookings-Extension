@@ -15,7 +15,7 @@
  *   fields     managed contact fields: next booking, last booking, confirmed bookings — for the CRM's
  *              "date reached" reminders and for segments.
  *   panel      a "Bookings" panel on the contact page.
- *   triggers   bookings.requested | confirmed | declined | cancelled for CRM automations.
+ *   triggers   bookings.requested | confirmed | declined | cancelled | reminder | ended for CRM automations.
  *   catch-up   Bookings → "Bring past bookings into the CRM".
  */
 class FW_Bookings_CRM {
@@ -29,6 +29,7 @@ class FW_Bookings_CRM {
 		add_filter( 'unysonplus_crm_managed_by_label', array( __CLASS__, '_managed' ), 10, 2 );
 		add_filter( 'unysonplus_crm_contact_panels', array( __CLASS__, '_panel' ), 10, 2 );
 		add_filter( 'unysonplus_crm_automation_triggers', array( __CLASS__, '_triggers' ) );
+		add_action( 'fw_ext_bookings_reminder', array( __CLASS__, '_reminder' ), 20, 2 );
 		add_action( 'admin_post_fw_bookings_crm_sync', array( __CLASS__, '_sync_all' ) );
 	}
 
@@ -307,11 +308,25 @@ class FW_Bookings_CRM {
 			'confirmed' => array( __( 'Booking confirmed', 'fw' ), __( 'For a reminder before it starts, use "date reached" on the Next booking field.', 'fw' ) ),
 			'declined'  => array( __( 'Booking declined', 'fw' ), '' ),
 			'cancelled' => array( __( 'Booking cancelled', 'fw' ), '' ),
+			'reminder'  => array( __( 'Booking about to start', 'fw' ), __( 'When the bookable’s reminder is due (Reminder hours before it starts).', 'fw' ) ),
+			'ended'     => array( __( 'Booking ended', 'fw' ), __( 'When the bookable’s thank-you is due (Thank-you hours after it ends). Good for a review request.', 'fw' ) ),
 		);
 		foreach ( $labels as $k => $l ) {
 			$t[ 'bookings.' . $k ] = array( 'label' => $l[0], 'group' => __( 'Bookings', 'fw' ), 'description' => $l[1], 'fields' => array() );
 		}
 		return $t;
+	}
+
+	/** @internal A reminder or thank-you came due: the bookings.reminder / bookings.ended trigger. */
+	public static function _reminder( $id, $kind ) {
+		$b = self::on() ? FW_Bookings_Store::find( $id ) : null;
+		if ( ! $b ) {
+			return;
+		}
+		$cid = self::sync_booking( $b, false );
+		if ( $cid ) {
+			self::event( 'reminder' === $kind ? 'reminder' : 'ended', $b, $cid );
+		}
 	}
 
 	/** Bring every booking not yet in the CRM into it (no automation events). @return int how many */

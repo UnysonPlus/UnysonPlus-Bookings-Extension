@@ -98,6 +98,7 @@ class FW_Bookings_Availability {
 		return $full;
 	}
 
+	/** A night's rate: a season covering it, else the weekend rate on a weekend night, else the base rate. */
 	public static function rate_for( array $s, $ymd ) {
 		$md = substr( $ymd, 5 );
 		foreach ( FW_Bookable_Seasons_Cache::get( $s ) as $season ) {
@@ -105,6 +106,9 @@ class FW_Bookings_Availability {
 			if ( $inside ) {
 				return array( 'rate' => (float) $season['rate'], 'name' => $season['name'] );
 			}
+		}
+		if ( FW_Bookings_Rates::is_weekend( $s, $ymd ) ) {
+			return array( 'rate' => (float) $s['weekend_rate'], 'name' => __( 'Weekend', 'fw' ) );
 		}
 		return array( 'rate' => (float) $s['base_rate'], 'name' => '' );
 	}
@@ -174,7 +178,8 @@ class FW_Bookings_Availability {
 	/**
 	 * Turn what the visitor chose into a booking span, or say what is wrong.
 	 *
-	 * @param array $pick nights: { start, end, guests } (dates) — slots: { date, time, guests }
+	 * @param array $pick nights: { start, end, guests } (dates) — slots: { date, time, guests };
+	 *                    both may carry extras: [ key, … ] (FW_Bookings_Rates)
 	 * @return array|string { start_at, end_at, guests, quote, label } or a message for the visitor
 	 */
 	public static function check( $id, array $pick, $exclude = 0 ) {
@@ -183,6 +188,7 @@ class FW_Bookings_Availability {
 		}
 		$s      = FW_Bookings_Bookables::settings( $id );
 		$guests = (int) ( $pick['guests'] ?? 1 );
+		$extras = FW_Bookings_Rates::chosen( $s, $pick['extras'] ?? array() );
 		if ( $guests < 1 || $guests > (int) $s['max_guests'] ) {
 			return sprintf( _n( 'Up to %d guest per booking.', 'Up to %d guests per booking.', (int) $s['max_guests'], 'fw' ), (int) $s['max_guests'] );
 		}
@@ -211,7 +217,7 @@ class FW_Bookings_Availability {
 			}
 			$start = $date . ' ' . $time . ':00';
 			$end   = gmdate( 'Y-m-d H:i:s', strtotime( $start ) + (int) $s['slot_minutes'] * 60 );
-			$quote = self::quote_slot( $s, $guests );
+			$quote = self::quote_slot( $s, $guests, $extras );
 			return array( 'start_at' => $start, 'end_at' => $end, 'guests' => $guests, 'quote' => $quote, 'label' => self::label( $id, $start, $end, $guests, $quote ) );
 		}
 
@@ -236,11 +242,11 @@ class FW_Bookings_Availability {
 		if ( self::full_nights( $id, $in, $out, $exclude ) ) {
 			return __( 'Sorry, some of those nights are already booked. Please choose other dates.', 'fw' );
 		}
-		$quote = self::quote_nights( $s, $in, $out );
+		$quote = self::quote_nights( $s, $in, $out, $extras, $guests );
 		return array( 'start_at' => $in . ' 00:00:00', 'end_at' => $out . ' 00:00:00', 'guests' => $guests, 'quote' => $quote, 'label' => self::label( $id, $in . ' 00:00:00', $out . ' 00:00:00', $guests, $quote ) );
 	}
 
-	public static function quote_nights( array $s, $in, $out ) {
+	public static function quote_nights( array $s, $in, $out, array $extras = array(), $guests = 1 ) {
 		$lines = array();
 		$sub   = 0.0;
 		$list  = self::nights( $in, $out );
@@ -254,13 +260,17 @@ class FW_Bookings_Availability {
 			$sub += $r['rate'];
 		}
 		$fee = count( $list ) ? (float) $s['cleaning'] : 0.0;
-		return array( 'nights' => count( $list ), 'lines' => array_values( $lines ), 'subtotal' => $sub, 'cleaning' => $fee, 'total' => $sub + $fee, 'deposit' => (float) $s['deposit'] );
+		$q   = array( 'nights' => count( $list ), 'lines' => array_values( $lines ), 'subtotal' => $sub, 'cleaning' => $fee, 'total' => $sub + $fee, 'deposit' => (float) $s['deposit'] );
+		FW_Bookings_Rates::apply( $q, $s, $extras, $guests );
+		return $q;
 	}
 
-	public static function quote_slot( array $s, $guests ) {
+	public static function quote_slot( array $s, $guests, array $extras = array() ) {
 		$each  = (float) $s['slot_price'];
 		$total = 'yes' === $s['per_person'] ? $each * max( 1, (int) $guests ) : $each;
-		return array( 'nights' => 0, 'lines' => array(), 'subtotal' => $total, 'cleaning' => 0.0, 'total' => $total, 'deposit' => 0.0 );
+		$q     = array( 'nights' => 0, 'lines' => array(), 'subtotal' => $total, 'cleaning' => 0.0, 'total' => $total, 'deposit' => 0.0 );
+		FW_Bookings_Rates::apply( $q, $s, $extras, $guests );
+		return $q;
 	}
 
 	public static function money( $n ) {
@@ -289,6 +299,9 @@ class FW_Bookings_Availability {
 			$parts[] = sprintf( _n( '%d night', '%d nights', $quote['nights'], 'fw' ), $quote['nights'] );
 		}
 		$parts[] = sprintf( _n( '%d guest', '%d guests', $guests, 'fw' ), $guests );
+		if ( ! empty( $quote['extras'] ) ) {
+			$parts[] = FW_Bookings_Rates::extras_line( $quote['extras'] );
+		}
 		if ( $quote['total'] > 0 ) {
 			$parts[] = self::money( $quote['total'] );
 		}
@@ -308,6 +321,12 @@ class FW_Bookings_Availability {
 			'maxNights' => (int) $s['max_nights'],
 			'baseRate'  => (float) $s['base_rate'],
 			'seasons'   => FW_Bookable_Seasons_Cache::get( $s ),
+			'weekend'   => (float) $s['weekend_rate'] > 0 ? array( 'rate' => (float) $s['weekend_rate'], 'days' => FW_Bookings_Rates::WEEKENDS[ $s['weekend_nights'] ] ?? array( 5, 6 ) ) : null,
+			'longStay'  => FW_Bookings_Rates::long_stay( $s ),
+			'extras'    => array_values( array_map( function ( $x ) {
+				return array( 'key' => $x['key'], 'name' => $x['name'], 'price' => FW_Bookings_Rates::price_label( $x ) );
+			}, FW_Bookings_Rates::extras( $s ) ) ),
+			'quoteUrl'  => rest_url( 'fw-bookings/v1/quote' ),
 			'cleaning'  => (float) $s['cleaning'],
 			'deposit'   => (float) $s['deposit'],
 			'slotPrice' => (float) $s['slot_price'],

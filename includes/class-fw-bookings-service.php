@@ -44,6 +44,7 @@ class FW_Bookings_Service {
 				'guests'      => $span['guests'],
 				'total'       => $span['quote']['total'],
 				'deposit'     => $span['quote']['deposit'],
+				'extras'      => $span['quote']['extras'] ?? array(),
 				'currency'    => FW_Bookings_Availability::currency(),
 			) ) );
 		} finally {
@@ -137,6 +138,9 @@ class FW_Bookings_Service {
 			get_the_title( $b->bookable_id ) . ': ' . FW_Bookings_Availability::when( $b->start_at, $b->end_at ),
 			sprintf( _n( '%d guest', '%d guests', $b->guests, 'fw' ), $b->guests ),
 		);
+		if ( ! empty( $b->extras ) ) {
+			$lines[] = __( 'Extras:', 'fw' ) . ' ' . FW_Bookings_Rates::extras_line( $b->extras );
+		}
 		if ( $b->total > 0 ) {
 			$lines[] = __( 'Total:', 'fw' ) . ' ' . FW_Bookings_Availability::money( $b->total );
 		}

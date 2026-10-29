@@ -24,14 +24,18 @@ class FW_Extension_Bookings extends FW_Extension {
 		require_once $dir . 'class-fw-bookings-store.php';
 		require_once $dir . 'class-fw-bookings-bookables.php';
 		require_once $dir . 'class-fw-bookings-availability.php';
+		require_once $dir . 'class-fw-bookings-rates.php';
 		require_once $dir . 'class-fw-bookings-service.php';
 		require_once $dir . 'class-fw-bookings-rest.php';
 		require_once $dir . 'class-fw-bookings-ical.php';
 		require_once $dir . 'class-fw-bookings-manage.php';
+		require_once $dir . 'class-fw-bookings-reminders.php';
 		require_once $dir . 'admin/class-fw-bookings-admin.php'; // also holds the menu slug the post type needs
 		require_once $dir . 'forms/class-fw-bookings-forms.php';
+		require_once $dir . 'forms/class-fw-bookings-choice.php';
 		require_once $dir . 'forms/class-fw-bookings-payments.php';
 		require_once $dir . 'crm/class-fw-bookings-crm.php';
+		require_once $dir . 'tools/class-fw-bookings-import.php';
 
 		FW_Bookings_Store::maybe_install();
 		FW_Bookings_Bookables::init();
@@ -39,7 +43,9 @@ class FW_Extension_Bookings extends FW_Extension {
 		FW_Bookings_REST::init();
 		FW_Bookings_ICal::init();
 		FW_Bookings_Manage::init();
+		FW_Bookings_Reminders::init();
 		FW_Bookings_Forms::init();
+		FW_Bookings_Choice::init();
 		FW_Bookings_Payments::init();
 		FW_Bookings_CRM::init();
 
@@ -47,6 +53,7 @@ class FW_Extension_Bookings extends FW_Extension {
 			FW_Bookings_Admin::init();
 			require_once $dir . 'admin/class-fw-bookings-calendar.php';
 			FW_Bookings_Calendar::init();
+			FW_Bookings_Import::init();
 		}
 	}
 }

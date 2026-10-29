@@ -7,7 +7,7 @@
  *   - the "Dates and availability" field (type `booking`): the live calendar, checked on the server;
  *   - the "Reserve" action: books the chosen dates / time when the form is sent;
  *   - answer tags {booking_ref}, {booking_item}, {booking_when}, {booking_nights}, {booking_guests},
- *     {booking_total}, {booking_deposit} for the subject, the success message and the emails;
+ *     {booking_total}, {booking_deposit}, {booking_extras} for the subject, the success message and the emails;
  *   - two starters in the form-type picker (Bookings group): a stay request and an appointment.
  */
 class FW_Bookings_Forms {
@@ -71,6 +71,7 @@ class FW_Bookings_Forms {
 		$tags['booking_guests']  = (string) $p['span']['guests'];
 		$tags['booking_total']   = FW_Bookings_Availability::money( $q['total'] );
 		$tags['booking_deposit'] = FW_Bookings_Availability::money( $q['deposit'] );
+		$tags['booking_extras']  = FW_Bookings_Rates::extras_line( $q['extras'] ?? array() );
 		return $tags;
 	}
 
@@ -168,6 +169,13 @@ class FW_Bookings_Forms {
 			'minNightsNote' => __( '%d nights minimum.', 'fw' ),
 			'fromSlot'      => __( '%s per booking.', 'fw' ),
 			'fromPerPerson' => __( '%s per person.', 'fw' ),
+			'extras'        => __( 'Extras', 'fw' ),
+			'choose'        => __( 'Choose', 'fw' ),
+			'freeFor'       => __( 'Free for your dates · %s', 'fw' ),
+			'notFree'       => __( 'Not free for these dates', 'fw' ),
+			'noQuote'       => __( 'The price could not be worked out. Please try again.', 'fw' ),
+			// Two blanks, filled in turn: the percent, then the nights.
+			'longStay'      => __( 'Save %s% on stays of %d nights or more.', 'fw' ),
 		);
 	}
 }

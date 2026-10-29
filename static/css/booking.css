@@ -59,6 +59,28 @@
 .fw-bk__total th, .fw-bk__total td { border-top: 1px solid var(--fw-bk-line) !important; padding-top: 10px; font-weight: 700; font-size: 1.0625rem; }
 .fw-bk__small { font-size: .8125rem; color: var(--fw-bk-muted); margin: 4px 0 0; line-height: 1.5; }
 .fw-bk__link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+/* A field offering several bookables: the choices, each marked free or not for the chosen dates. */
+.fw-bk__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.fw-bk__choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--fw-bk-line); border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s ease-out, box-shadow .15s ease-out; }
+.fw-bk__choice strong { font-weight: 600; }
+.fw-bk__choice small { font-size: .8125rem; color: var(--fw-bk-muted); }
+.fw-bk__choice:hover { border-color: currentColor; }
+.fw-bk__choice.is-on { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
+.fw-bk__choice.is-off small { color: #b32d2e; }
+.fw-bk__choice:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+/* Extras ticked in the summary. */
+.fw-bk__extras:empty { display: none; }
+.fw-bk__extras-title { margin: 0 0 4px; font-size: .8125rem; font-weight: 600; color: var(--fw-bk-muted); }
+.fw-bk__extra { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; width: auto; font-weight: 400; cursor: pointer; }
+.fw-bk__extra small { margin-left: auto; color: var(--fw-bk-muted); font-size: .8125rem; white-space: nowrap; }
+/* A theme's form styles size every checkbox; inside the summary an extra is one compact row. */
+.fw-bk .fw-bk__extra { flex-direction: row; align-items: center; flex-wrap: nowrap; }
+.fw-bk .fw-bk__extra input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-width: 0; min-height: 0; margin: 0; padding: 0; display: inline-block; }
+.fw-bk .fw-bk__extra span { flex: 1 1 auto; font-weight: 500; }
+.fw-bk__quote.is-loading { opacity: .5; }
+.fw-bk__small.is-warn { color: #b32d2e; }
+.fw-bk-plain fieldset { grid-column: 1 / -1; border: 0; padding: 0; margin: 0; }
+.fw-bk-plain fieldset label { flex-direction: row; align-items: baseline; gap: 6px; }
 @media (max-width: 900px) { .fw-bk__grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .fw-bk__month--extra { display: none; } }
 @media (prefers-reduced-motion: reduce) { .fw-bk * { transition: none !important; } }

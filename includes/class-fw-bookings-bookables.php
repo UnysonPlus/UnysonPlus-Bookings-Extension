@@ -63,6 +63,16 @@ class FW_Bookings_Bookables {
 			'deposit'       => 0,
 			'checkin_time'  => '3:00 PM',
 			'checkout_time' => '11:00 AM',
+			'weekend_rate'  => 0,
+			'weekend_nights'=> 'fri,sat',
+			'long_stay'     => '',
+			// both
+			'extras'        => '',
+			// reminders and follow-ups (FW_Bookings_Reminders)
+			'remind_hours'  => 0,
+			'remind_note'   => '',
+			'thanks_hours'  => 0,
+			'thanks_note'   => '',
 			// slots
 			'hours'         => "Mon-Fri | 09:00-17:00",
 			'slot_minutes'  => 60,
@@ -211,6 +221,9 @@ class FW_Bookings_Bookables {
 		$f( 'seasons', __( 'Seasons', 'fw' ), 'textarea', __( 'One per line: Name | MM-DD | MM-DD | nightly rate. Example: Peak season | 07-01 | 08-31 | 250. A range may run over the new year.', 'fw' ) );
 		$f( 'min_nights', __( 'Shortest stay (nights)', 'fw' ), 'number', '', ' min="1" max="365"' );
 		$f( 'max_nights', __( 'Longest stay (nights)', 'fw' ), 'number', '', ' min="1" max="730"' );
+		$f( 'weekend_rate', sprintf( __( 'Weekend nightly rate (%s)', 'fw' ), $cur ), 'number', __( '0 = the same as any other night. A season covering the night still wins.', 'fw' ), ' min="0" step="0.01"' );
+		$f( 'weekend_nights', __( 'Weekend nights', 'fw' ), array( 'fri,sat' => __( 'Friday and Saturday', 'fw' ), 'sat' => __( 'Saturday', 'fw' ), 'fri,sat,sun' => __( 'Friday, Saturday and Sunday', 'fw' ) ) );
+		$f( 'long_stay', __( 'Long-stay discounts', 'fw' ), 'textarea', __( 'One per line: nights | % off. Example: 7 | 10 and 28 | 25. The highest one the stay reaches applies, to the nightly price only.', 'fw' ) );
 		$f( 'cleaning', sprintf( __( 'Cleaning fee per stay (%s)', 'fw' ), $cur ), 'number', '', ' min="0" step="0.01"' );
 		$f( 'deposit', sprintf( __( 'Security deposit (%s)', 'fw' ), $cur ), 'number', __( 'Shown apart from the total.', 'fw' ), ' min="0" step="0.01"' );
 		$f( 'checkin_time', __( 'Check-in from', 'fw' ) );
@@ -225,6 +238,15 @@ class FW_Bookings_Bookables {
 		$f( 'slot_price', sprintf( __( 'Price (%s)', 'fw' ), $cur ), 'number', __( '0 = free.', 'fw' ), ' min="0" step="0.01"' );
 		$f( 'per_person', __( 'Price is per person', 'fw' ), $yn );
 		echo '</tbody></table></div>';
+		echo '<h3>' . esc_html__( 'Extras', 'fw' ) . '</h3><table class="form-table" role="presentation"><tbody>';
+		$f( 'extras', __( 'Extras guests can add', 'fw' ), 'textarea', __( 'One per line: Name | price | per. Per: stay, night, guest or guest-night (by the night); booking or person (by time slot). Example: Breakfast | 15 | guest-night and Airport pickup | 40 | stay.', 'fw' ) );
+		echo '</tbody></table>';
+		echo '<h3>' . esc_html__( 'Reminders and follow-ups', 'fw' ) . '</h3><p class="description">' . esc_html__( 'Emails to the guest about a confirmed booking, sent once each.', 'fw' ) . '</p><table class="form-table" role="presentation"><tbody>';
+		$f( 'remind_hours', __( 'Reminder (hours before it starts)', 'fw' ), 'number', __( '0 = no reminder. For a stay it counts from check-in day; for an appointment, from its time.', 'fw' ), ' min="0" max="720"' );
+		$f( 'remind_note', __( 'Add to the reminder', 'fw' ), 'textarea', __( 'Directions, what to bring, the door code: anything the guest needs before they come.', 'fw' ) );
+		$f( 'thanks_hours', __( 'Thank-you (hours after it ends)', 'fw' ), 'number', __( '0 = no thank-you.', 'fw' ), ' min="0" max="720"' );
+		$f( 'thanks_note', __( 'Add to the thank-you', 'fw' ), 'textarea', __( 'For example a link to leave a review, or an offer for the next visit.', 'fw' ) );
+		echo '</tbody></table>';
 		FW_Bookings_ICal::render_box( $post );
 		echo '<script>(function(){var s=document.getElementById("fw-bk-mode");function u(){document.querySelectorAll(".fw-bk-mode").forEach(function(b){b.hidden=b.getAttribute("data-mode")!==s.value;});}s.addEventListener("change",u);u();})();</script>';
 	}
@@ -261,6 +283,14 @@ class FW_Bookings_Bookables {
 			'deposit'        => $num( 'deposit', 0, 1e7, true ),
 			'checkin_time'   => sanitize_text_field( (string) ( $in['checkin_time'] ?? $d['checkin_time'] ) ),
 			'checkout_time'  => sanitize_text_field( (string) ( $in['checkout_time'] ?? $d['checkout_time'] ) ),
+			'weekend_rate'   => $num( 'weekend_rate', 0, 1e7, true ),
+			'weekend_nights' => isset( FW_Bookings_Rates::WEEKENDS[ $in['weekend_nights'] ?? '' ] ) ? $in['weekend_nights'] : 'fri,sat',
+			'long_stay'      => sanitize_textarea_field( (string) ( $in['long_stay'] ?? '' ) ),
+			'extras'         => sanitize_textarea_field( (string) ( $in['extras'] ?? '' ) ),
+			'remind_hours'   => $num( 'remind_hours', 0, 720 ),
+			'remind_note'    => sanitize_textarea_field( (string) ( $in['remind_note'] ?? '' ) ),
+			'thanks_hours'   => $num( 'thanks_hours', 0, 720 ),
+			'thanks_note'    => sanitize_textarea_field( (string) ( $in['thanks_note'] ?? '' ) ),
 			'hours'          => sanitize_textarea_field( (string) ( $in['hours'] ?? $d['hours'] ) ),
 			'slot_minutes'   => $num( 'slot_minutes', 5, 1440 ),
 			'buffer_minutes' => $num( 'buffer_minutes', 0, 720 ),

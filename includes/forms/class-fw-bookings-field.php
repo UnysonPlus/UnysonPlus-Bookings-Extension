@@ -5,10 +5,12 @@
 /**
  * "Dates and availability" — a Forms field (type `booking`) supplied by Bookings.
  *
- * Which bookable it books is set on the field (never posted), so a visitor cannot book something else
- * by editing the page. It posts:
+ * Which bookable it books is set on the field, so a visitor cannot book something else by editing the
+ * page. A field can also OFFER several (option `choose`, FW_Bookings_Choice): the visitor picks one,
+ * posted as <shortcode>[bookable], which must be one of those offered. It posts:
  *   by the night   <shortcode>[start], [end] (Y-m-d), [guests]
  *   by time slot   <shortcode>[date] (Y-m-d), [time] (HH:MM), [guests]
+ *   both           <shortcode>[extras][] (the extras ticked, FW_Bookings_Rates), [bookable] (a choice)
  * The markup is plain controls that work without JavaScript; static/js/booking.js turns them into the
  * live calendar. The server checks everything again (FW_Bookings_Availability::check) and keeps the
  * result for the Reserve action and the answer tags. The stored value is one readable line.
@@ -32,7 +34,8 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 	}
 
 	public function get_options() {
-		$items = array( '' => __( '— Choose what is booked —', 'fw' ) ) + FW_Bookings_Bookables::choices();
+		$all   = FW_Bookings_Bookables::choices();
+		$items = array( '' => __( '— Choose what is booked —', 'fw' ) ) + $all;
 		return array(
 			$this->label_group( __( 'Your dates', 'fw' ), true ),
 			array(
@@ -46,6 +49,16 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 								'desc'    => __( 'A room, rental, table or service from Bookings → Bookables.', 'fw' ),
 								'value'   => '',
 								'choices' => $items,
+							),
+						),
+						array(
+							'choose' => array(
+								'type'    => 'checkboxes',
+								'label'   => __( 'Or let the visitor choose', 'fw' ),
+								'desc'    => __( 'Tick two or more to offer a choice (rooms, cabins, staff). The visitor picks one and sees which are free for their dates. They must all be booked the same way, by the night or by time slot.', 'fw' ),
+								'value'   => array(),
+								'choices' => $all,
+								'inline'  => false,
 							),
 						),
 						array(
@@ -78,7 +91,16 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 		return $attributes;
 	}
 
-	private static function bookable( array $item ) {
+	/**
+	 * The bookable this submission books. With a choice, the one the visitor picked, if the field offers
+	 * it (else the first offered); otherwise the field's own.
+	 */
+	private static function bookable( array $item, $value = null ) {
+		$offered = FW_Bookings_Choice::offered( $item );
+		if ( $offered ) {
+			$picked = is_array( $value ) ? (int) ( $value['bookable'] ?? 0 ) : 0;
+			return in_array( $picked, $offered, true ) ? $picked : $offered[0];
+		}
 		$id = (int) ( $item['options']['bookable'] ?? 0 );
 		return $id && FW_Bookings_Bookables::exists( $id ) ? $id : 0;
 	}
@@ -89,7 +111,8 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 		$get = function ( $k ) use ( $v ) {
 			return isset( $v[ $k ] ) && is_scalar( $v[ $k ] ) ? trim( (string) $v[ $k ] ) : '';
 		};
-		return array( 'start' => $get( 'start' ), 'end' => $get( 'end' ), 'date' => $get( 'date' ), 'time' => $get( 'time' ), 'guests' => (int) $get( 'guests' ) );
+		$extras = isset( $v['extras'] ) && is_array( $v['extras'] ) ? array_values( array_filter( array_map( 'sanitize_title', array_filter( $v['extras'], 'is_scalar' ) ) ) ) : array();
+		return array( 'start' => $get( 'start' ), 'end' => $get( 'end' ), 'date' => $get( 'date' ), 'time' => $get( 'time' ), 'guests' => (int) $get( 'guests' ), 'extras' => $extras );
 	}
 
 	private static function empty_pick( array $p ) {
@@ -97,8 +120,9 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 	}
 
 	public function frontend_render( array $item, $input_value ) {
-		$name = (string) ( $item['shortcode'] ?? '' );
-		$id   = self::bookable( $item );
+		$name    = (string) ( $item['shortcode'] ?? '' );
+		$id      = self::bookable( $item, $input_value );
+		$offered = FW_Bookings_Choice::offered( $item );
 		$req  = ! empty( $item['options']['required'] );
 		$fid  = 'id-' . fw_unique_increment();
 		$lab  = fw_htmlspecialchars( $item['options']['label'] ?? '' );
@@ -115,6 +139,13 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 			'months' => '1' === (string) ( $item['options']['months'] ?? '2' ) ? 1 : 2,
 			'i18n'   => FW_Bookings_Forms::i18n(),
 		) );
+		if ( $offered ) {
+			$cfg['choices']    = FW_Bookings_Choice::config( $offered );
+			$cfg['choicesUrl'] = rest_url( 'fw-bookings/v1/choices' );
+			$max_guests        = max( array_column( $cfg['choices'], 'max' ) );
+		} else {
+			$max_guests = (int) $s['max_guests'];
+		}
 		$gl = trim( (string) ( $item['options']['guests_label'] ?? '' ) );
 		if ( '' !== $gl ) {
 			$cfg['i18n']['guests'] = $gl;
@@ -131,6 +162,13 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 				<legend><?php echo $lab; // phpcs:ignore WordPress.Security.EscapeOutput -- fw_htmlspecialchars ?><?php if ( $req ) : ?><sup>*</sup><?php endif; ?></legend>
 				<div class="fw-bk" data-fw-bk="<?php echo esc_attr( wp_json_encode( $cfg ) ); ?>"></div>
 				<div class="fw-bk-plain" data-fw-bk-plain>
+					<?php if ( $offered ) : ?>
+						<fieldset class="fw-bk-plain__choices"><legend><?php esc_html_e( 'Choose', 'fw' ); ?></legend>
+							<?php foreach ( $offered as $oid ) : ?>
+								<label><input type="radio" name="<?php echo esc_attr( $name ); ?>[bookable]" value="<?php echo (int) $oid; ?>" data-bk-choice<?php checked( $oid, $id ); ?>> <?php echo esc_html( get_the_title( $oid ) ); ?> <small><?php echo esc_html( FW_Bookings_Choice::from_label( $oid ) ); ?></small></label>
+							<?php endforeach; ?>
+						</fieldset>
+					<?php endif; ?>
 					<?php if ( $slots ) : ?>
 						<label><span><?php esc_html_e( 'Day', 'fw' ); ?></span>
 							<input type="date" name="<?php echo esc_attr( $name ); ?>[date]" value="<?php echo esc_attr( $v['date'] ); ?>" min="<?php echo esc_attr( $today ); ?>" data-bk-a<?php echo $req ? ' required' : ''; ?>></label>
@@ -144,10 +182,18 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 					<?php endif; ?>
 					<label><span><?php echo esc_html( '' !== $gl ? $gl : __( 'Guests', 'fw' ) ); ?></span>
 						<select name="<?php echo esc_attr( $name ); ?>[guests]" data-bk-guests>
-							<?php for ( $g = 1; $g <= (int) $s['max_guests']; $g++ ) : ?>
+							<?php for ( $g = 1; $g <= $max_guests; $g++ ) : ?>
 								<option value="<?php echo (int) $g; ?>"<?php selected( $g, $v['guests'] ); ?>><?php echo (int) $g; ?></option>
 							<?php endfor; ?>
 						</select></label>
+					<?php $extras = FW_Bookings_Rates::extras( $s ); ?>
+					<?php if ( $extras ) : ?>
+						<fieldset class="fw-bk-plain__extras"><legend><?php esc_html_e( 'Extras', 'fw' ); ?></legend>
+							<?php foreach ( $extras as $x ) : ?>
+								<label><input type="checkbox" name="<?php echo esc_attr( $name ); ?>[extras][]" value="<?php echo esc_attr( $x['key'] ); ?>" data-bk-extra<?php checked( in_array( $x['key'], $v['extras'], true ) ); ?>> <?php echo esc_html( $x['name'] ); ?> <small><?php echo esc_html( FW_Bookings_Rates::price_label( $x ) ); ?></small></label>
+							<?php endforeach; ?>
+						</fieldset>
+					<?php endif; ?>
 				</div>
 				<?php if ( ! empty( $item['options']['info'] ) ) : ?>
 					<p class="field-info" id="<?php echo esc_attr( $fid ); ?>-info"><em><?php echo esc_html( $item['options']['info'] ); ?></em></p>
@@ -159,7 +205,7 @@ class FW_Option_Type_Form_Builder_Item_Booking extends FW_Option_Type_Form_Build
 	}
 
 	public function frontend_validate( array $item, $input_value ) {
-		$id = self::bookable( $item );
+		$id = self::bookable( $item, $input_value );
 		$p  = self::parse( $input_value );
 		if ( self::empty_pick( $p ) ) {
 			return ! empty( $item['options']['required'] ) ? $this->msg( $item, __( 'Please choose your dates or time', 'fw' ) ) : null;

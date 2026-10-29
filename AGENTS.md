@@ -34,7 +34,7 @@ bookables, admin and REST still work, and the field / action are simply not offe
   moment the visitor can still be told "that time has just gone"); `run()` links the entry and mails; a booking made
   in validate() whose form was refused later is deleted on `shutdown`.
 - Answer tags: `{booking_ref}`, `{booking_item}`, `{booking_when}`, `{booking_nights}`, `{booking_guests}`,
-  `{booking_total}`, `{booking_deposit}`. Starters `bookings_stay`, `bookings_appointment` (picker group Bookings).
+  `{booking_total}`, `{booking_deposit}`, `{booking_extras}`. Starters `bookings_stay`, `bookings_appointment` (picker group Bookings).
   The picker cannot flip switches, which is why the action defaults on.
 - Prices use `FW_Forms_Money` (Forms' currency) when Forms is on.
 
@@ -69,6 +69,40 @@ bookables, admin and REST still work, and the field / action are simply not offe
   (`managed_by = bookings`), triggers `bookings.requested|confirmed|declined|cancelled`.
 - `FW_Bookings_Store::update()` writes bookkeeping columns only (paid, entry_id, crm_*, guest details); times and
   status never change except through `set_status()` / the availability checks.
+
+## Rates, choice, reminders, import (1.0.4, schema 1.2.0)
+
+- **Rates** (`class-fw-bookings-rates.php`): settings `weekend_rate` (0 = off), `weekend_nights` (`fri,sat` | `sat` |
+  `fri,sat,sun`), `long_stay` ("nights | % off" lines; highest tier reached, nightly part only), `extras` ("Name | price |
+  per" lines; per = stay | night | guest | guest-night, or booking | person for slots; key = `sanitize_title( name )`).
+  Rate order in `rate_for()`: season > weekend > base. `FW_Bookings_Rates::apply()` adds `discount`,
+  `discount_label`, `extras`, `extras_total` and recomputes `total`; `rows()` formats a quote for display. The pick
+  carries `extras` (keys); unknown keys are dropped. The booking stores the chosen extras as JSON (`extras` column,
+  hydrated to an array).
+- **The page shows the server's quote**: `GET fw-bookings/v1/quote` runs `check()` (the call the form makes when sent)
+  and returns `rows`, `total`, `raw`, `deposit`. booking.js no longer prices anything itself; its `rateFor()` only
+  labels days (it knows seasons and the weekend rate). Keep it that way: a price rule added server-side needs no JS.
+- **Choice** (`forms/class-fw-bookings-choice.php`): field option `choose` (checkboxes of bookables). Two or more of the
+  same mode = a choice (the first decides the mode; others are left out). Posted `<sc>[bookable]` must be one offered.
+  `GET fw-bookings/v1/choices?ids=` answers free / price per id with `check()`. The widget swaps its config on a choice
+  and keeps hidden inputs for `[bookable]` and `[extras][]` (the plain ones are removed when JS runs).
+- **Reminders** (`class-fw-bookings-reminders.php`): settings `remind_hours` / `remind_note`, `thanks_hours` /
+  `thanks_note` (0 = off). Hourly cron `fw_bookings_reminders` -> `FW_Bookings_Reminders::run()`; picks confirmed rows
+  via `FW_Bookings_Store::due()` (a reminder for a start within the next N hours; a thank-you for an end N hours ago,
+  within one day, so enabling it never mails old guests); marks `reminded_at` / `thanked_at` BEFORE mailing. Filter
+  `fw_ext_bookings_reminder_mail`; action `fw_ext_bookings_reminder( $id, 'reminder'|'thanks' )`, which the CRM link
+  turns into triggers `bookings.reminder` / `bookings.ended`.
+- **Export** (same class, Bookings -> Import / Export, 1.0.5): admin-post `fw_bookings_export` (`format` csv|json,
+  `bookable` 0|id, `when` ''|upcoming|past). `csv_rows()` = the CSV import's columns + extras, deposit, paid, currency,
+  created (stay times as plain dates, so the file imports back); `export()` = a package with `format:
+  'unysonplus-bookings'`, every bookable's settings and its bookings, read back by the `json` import source. Every
+  import feature ships with its export.
+- **Import** (`tools/class-fw-bookings-import.php`, Bookings -> Import / Export, `manage_options`): `FW_Bookings_Import::import(
+  $source, { bookables, bookings, calendars }, $dry )`; map in option `fw_bookings_import_map` (source -> keys -> ids),
+  so a re-run only adds new rows; a booking whose `ref` already exists is skipped whatever the source. Times are kept as given and availability is NOT re-checked (they already happened
+  elsewhere). Built-in source `csv`; others register on `fw_ext_bookings_import_sources` ({ label, description,
+  available(), package(), upload? }). A site's adapter for its own old plugin lives on that site, never in Unyson+
+  (it names the site's plugin).
 
 ## Hooks
 

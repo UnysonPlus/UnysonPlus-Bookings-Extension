@@ -5,10 +5,13 @@
  * posted controls (nights: start / end / guests, slots: date / time / guests). Without JavaScript those
  * plain controls are the field; with it they are hidden and kept in step with the calendar.
  *
- *   nights  pick a check-in day, then a check-out day; taken nights are struck through; the price
- *           (nightly rates with seasons, cleaning fee, deposit) is worked out live, the same way the
- *           server does it (FW_Bookings_Availability::quote_nights).
+ *   nights  pick a check-in day, then a check-out day; taken nights are struck through.
  *   slots   days with a free time are open; pick a day, then a time.
+ *
+ * The price is the SERVER's quote (GET fw-bookings/v1/quote, the same check the form makes when it is
+ * sent), so weekend rates, long-stay discounts and extras can never be priced differently on the page.
+ * The calendar only shows each night's rate on its day. Extras are ticked in the summary; a field that
+ * offers several bookables (cfg.choices) shows them as choices, each marked free or not for the dates.
  *
  * Availability comes from GET /wp-json/fw-bookings/v1/availability and is fetched again after the
  * form is sent or refused, so the calendar never shows a place someone has just taken.
@@ -31,6 +34,9 @@
 		try { cfg = JSON.parse(root.getAttribute('data-fw-bk') || '{}'); } catch (e) {}
 		this.root = root;
 		this.cfg = cfg;
+		this.shared = { months: cfg.months, i18n: cfg.i18n, choices: cfg.choices || null, choicesUrl: cfg.choicesUrl };
+		this.extras = {};
+		this.q = null; this.qKey = '';
 		this.t = cfg.i18n || {};
 		this.plain = root.parentNode ? root.parentNode.querySelector('[data-fw-bk-plain]') : null;
 		this.full = {};
@@ -51,12 +57,14 @@
 		return (n < 0 ? '-' : '') + m.symbol + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 	};
 
+	// The rate shown on a day: a season, else the weekend rate, else the base rate (as the server prices it).
 	Widget.prototype.rateFor = function (d) {
-		var md = pad(d.getMonth() + 1) + '-' + pad(d.getDate()), list = this.cfg.seasons || [];
+		var md = pad(d.getMonth() + 1) + '-' + pad(d.getDate()), list = this.cfg.seasons || [], w = this.cfg.weekend;
 		for (var i = 0; i < list.length; i++) {
 			var s = list[i], inside = s.from <= s.to ? (md >= s.from && md <= s.to) : (md >= s.from || md <= s.to);
 			if (inside) { return { rate: +s.rate, name: s.name }; }
 		}
+		if (w && w.days.indexOf(d.getDay() === 0 ? 7 : d.getDay()) !== -1) { return { rate: +w.rate, name: '' }; }
 		return { rate: +this.cfg.baseRate, name: '' };
 	};
 
@@ -66,6 +74,7 @@
 		var c = this.cfg, t = this.t, g = '';
 		for (var i = 1; i <= c.maxGuests; i++) { g += '<option value="' + i + '">' + i + '</option>'; }
 		this.root.innerHTML =
+			(this.shared.choices ? '<div class="fw-bk__choices" role="radiogroup" aria-label="' + esc(t.choose) + '"></div>' : '') +
 			'<div class="fw-bk__grid">' +
 				'<div class="fw-bk__cal">' +
 					'<div class="fw-bk__head"><button type="button" class="fw-bk__nav" data-nav="-1" aria-label="' + esc(t.prev) + '">&#8249;</button>' +
@@ -78,6 +87,7 @@
 					(this.slots() ? '<div class="fw-bk__dates fw-bk__dates--one"><div><span>' + esc(t.when) + '</span><strong data-out="a"></strong></div></div>'
 						: '<div class="fw-bk__dates"><div><span>' + esc(t.checkin) + '</span><strong data-out="a"></strong></div><div><span>' + esc(t.checkout) + '</span><strong data-out="b"></strong></div></div>') +
 					'<label class="fw-bk__guests"><span>' + esc(t.guests) + '</span><select>' + g + '</select></label>' +
+					'<div class="fw-bk__extras"></div>' +
 					'<div class="fw-bk__quote" aria-live="polite"></div>' +
 				'</div>' +
 			'</div>';
@@ -88,8 +98,15 @@
 		this.$a = this.root.querySelector('[data-out="a"]');
 		this.$b = this.root.querySelector('[data-out="b"]');
 		this.$guests = this.root.querySelector('.fw-bk__guests select');
+		this.$extras = this.root.querySelector('.fw-bk__extras');
+		this.$choices = this.root.querySelector('.fw-bk__choices');
 		var self = this;
+		this.root.addEventListener('change', function (e) {
+			if (e.target.matches('[data-extra]')) { self.extras[e.target.value] = e.target.checked; self.renderSide(); }
+		});
 		this.root.addEventListener('click', function (e) {
+			var ch = e.target.closest('[data-choice]');
+			if (ch) { self.choose(+ch.getAttribute('data-choice')); return; }
 			var nav = e.target.closest('[data-nav]');
 			if (nav) { self.shift(+nav.getAttribute('data-nav')); return; }
 			var day = e.target.closest('[data-day]');
@@ -103,6 +120,65 @@
 			if (!self.slots() && self.a && !self.b && day) { self.hover = parse(day.getAttribute('data-day')); self.paint(); }
 		});
 		this.$guests.addEventListener('change', function () { self.renderSide(); });
+		this.renderExtras();
+		this.renderChoices();
+	};
+
+	Widget.prototype.guestOptions = function () {
+		var g = '', cur = +this.$guests.value || 1;
+		for (var i = 1; i <= this.cfg.maxGuests; i++) { g += '<option value="' + i + '"' + (i === Math.min(cur, this.cfg.maxGuests) ? ' selected' : '') + '>' + i + '</option>'; }
+		this.$guests.innerHTML = g;
+	};
+
+	Widget.prototype.renderExtras = function () {
+		var t = this.t, list = this.cfg.extras || [], self = this;
+		if (!list.length) { this.$extras.innerHTML = ''; return; }
+		this.$extras.innerHTML = '<p class="fw-bk__extras-title">' + esc(t.extras) + '</p>' + list.map(function (x) {
+			return '<label class="fw-bk__extra"><input type="checkbox" data-extra value="' + esc(x.key) + '"' + (self.extras[x.key] ? ' checked' : '') + '> <span>' + esc(x.name) + '</span> <small>' + esc(x.price) + '</small></label>';
+		}).join('');
+	};
+
+	// A field offering several bookables: the visitor's choice, marked free or not for the chosen dates.
+	Widget.prototype.renderChoices = function () {
+		if (!this.$choices) { return; }
+		var cur = this.cfg.bookable, avail = this.avail || {}, t = this.t;
+		this.$choices.innerHTML = this.shared.choices.map(function (c) {
+			var a = avail[c.id], note = a ? (a.ok ? fill(t.freeFor, a.total) : t.notFree) : c.from;
+			return '<button type="button" role="radio" class="fw-bk__choice' + (c.id === cur ? ' is-on' : '') + (a && !a.ok ? ' is-off' : '') + '" data-choice="' + c.id + '" aria-checked="' + (c.id === cur ? 'true' : 'false') + '">' +
+				'<strong>' + esc(c.title) + '</strong><small>' + esc(note || '') + '</small></button>';
+		}).join('');
+	};
+
+	Widget.prototype.choose = function (id) {
+		var c = null, list = this.shared.choices || [];
+		for (var i = 0; i < list.length; i++) { if (list[i].id === id) { c = list[i]; } }
+		if (!c || c.id === this.cfg.bookable) { return; }
+		var keep = { months: this.shared.months, i18n: this.shared.i18n };
+		this.cfg = Object.assign({}, c.config, keep);
+		this.full = {}; this.days = {}; this.loaded = {}; this.extras = {}; this.q = null; this.qKey = '';
+		if (this.slots()) { this.time = ''; }
+		this.guestOptions();
+		this.renderExtras();
+		this.renderChoices();
+		this.render();
+		this.fetch();
+	};
+
+	// Which of the offered bookables are free for the chosen dates (and their price).
+	Widget.prototype.fetchChoices = function () {
+		if (!this.shared.choices || !this.shared.choicesUrl) { return; }
+		var p = this.params(true);
+		if (!p) { this.avail = {}; this.renderChoices(); return; }
+		var self = this, ids = this.shared.choices.map(function (c) { return c.id; }).join(','), key = ids + '|' + p;
+		if (key === this.cKey) { return; }
+		this.cKey = key;
+		fetch(this.shared.choicesUrl + (this.shared.choicesUrl.indexOf('?') === -1 ? '?' : '&') + 'ids=' + ids + '&' + p, { credentials: 'same-origin' })
+			.then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+				if (!j || key !== self.cKey) { return; }
+				self.avail = {};
+				(j.choices || []).forEach(function (c) { self.avail[c.id] = c; });
+				self.renderChoices();
+			}).catch(function () {});
 	};
 
 	// The posted controls: take over their values (a refused submission, an edit, a pre-fill), then hide them.
@@ -113,6 +189,15 @@
 			a: p.querySelector('[data-bk-a]'), b: p.querySelector('[data-bk-b]'),
 			time: p.querySelector('[data-bk-time]'), guests: p.querySelector('[data-bk-guests]')
 		};
+		// Extras and the choice are posted by hidden inputs this widget keeps; the plain ones are dropped.
+		this.base = this.$p.guests ? this.$p.guests.name.replace(/\[guests\]$/, '') : '';
+		var picked = p.querySelector('[data-bk-choice]:checked');
+		Array.prototype.forEach.call(p.querySelectorAll('[data-bk-extra]'), function (el) { if (el.checked) { self.extras[el.value] = true; } el.parentNode.removeChild(el); });
+		Array.prototype.forEach.call(p.querySelectorAll('[data-bk-choice]'), function (el) { el.parentNode.removeChild(el); });
+		this.$hidden = document.createElement('div');
+		p.appendChild(this.$hidden);
+		if (picked && this.shared.choices && +picked.value !== this.cfg.bookable) { this.choose(+picked.value); }
+		this.renderExtras();
 		if (this.$p.guests && this.$p.guests.value) { this.$guests.value = this.$p.guests.value; }
 		if (this.$p.a && this.$p.a.value) {
 			var a = parse(this.$p.a.value);
@@ -146,7 +231,16 @@
 		if (this.$p.a && this.$p.a.value !== va) { this.$p.a.value = va; changed = true; }
 		if (this.$p.b && this.$p.b.value !== vb) { this.$p.b.value = vb; changed = true; }
 		if (this.$p.time && this.$p.time.value !== vt) { this.$p.time.value = vt; changed = true; }
-		if (this.$p.guests && this.$p.guests.value !== this.$guests.value) { this.$p.guests.value = this.$guests.value; changed = true; }
+		if (this.$p.guests && this.$p.guests.value !== this.$guests.value) {
+			if (!this.$p.guests.querySelector('option[value="' + this.$guests.value + '"]')) { this.$p.guests.insertAdjacentHTML('beforeend', '<option value="' + this.$guests.value + '">' + this.$guests.value + '</option>'); }
+			this.$p.guests.value = this.$guests.value; changed = true;
+		}
+		if (this.$hidden && this.base) {
+			var h = '', base = this.base, ex = this.extras;
+			if (this.shared.choices) { h += '<input type="hidden" name="' + esc(base) + '[bookable]" value="' + (+this.cfg.bookable) + '">'; }
+			Object.keys(ex).forEach(function (k) { if (ex[k]) { h += '<input type="hidden" name="' + esc(base) + '[extras][]" value="' + esc(k) + '">'; } });
+			if (this.$hidden.innerHTML !== h) { this.$hidden.innerHTML = h; changed = true; }
+		}
 		if (changed && this.$p.a) { this.$p.a.dispatchEvent(new Event('change', { bubbles: true })); }
 	};
 
@@ -304,45 +398,75 @@
 		this.$times.innerHTML = list.length ? '<p class="fw-bk__times-title">' + esc(t.times) + '</p><div class="fw-bk__time-list">' + html + '</div>' : '<p class="fw-bk__times-title">' + esc(t.noTimes) + '</p>';
 	};
 
-	Widget.prototype.quote = function () {
-		var c = this.cfg;
+	// The chosen dates / time, guests and extras as query args, or null while the choice is not complete.
+	Widget.prototype.params = function (noExtras) {
+		var g = +this.$guests.value || 1, p;
 		if (this.slots()) {
 			if (!this.a || !this.time) { return null; }
-			var total = c.perPerson ? c.slotPrice * (+this.$guests.value || 1) : c.slotPrice;
-			return { slot: true, total: total };
+			p = 'date=' + ymd(this.a) + '&time=' + encodeURIComponent(this.time);
+		} else {
+			if (!this.a || !this.b) { return null; }
+			p = 'start=' + ymd(this.a) + '&end=' + ymd(this.b);
 		}
-		if (!this.a || !this.b) { return null; }
-		var groups = {}, order = [], sub = 0;
-		for (var d = this.a; d < this.b; d = addDays(d, 1)) {
-			var r = this.rateFor(d), k = r.name + '|' + r.rate;
-			if (!groups[k]) { groups[k] = { name: r.name, rate: r.rate, n: 0 }; order.push(k); }
-			groups[k].n++; sub += r.rate;
+		p += '&guests=' + g;
+		if (!noExtras) {
+			var ex = this.extras, keys = Object.keys(ex).filter(function (k) { return ex[k]; });
+			if (keys.length) { p += '&extras=' + encodeURIComponent(keys.join(',')); }
 		}
-		return { lines: order.map(function (k) { return groups[k]; }), subtotal: sub, cleaning: +c.cleaning, total: sub + (+c.cleaning), deposit: +c.deposit };
+		return p;
+	};
+
+	Widget.prototype.requestQuote = function () {
+		var p = this.params(), c = this.cfg, self = this;
+		if (!p) { this.q = null; this.qKey = ''; return; }
+		var key = c.bookable + '|' + p;
+		if (key === this.qKey) { return; }
+		this.qKey = key;
+		this.q = { loading: true };
+		fetch(c.quoteUrl + (c.quoteUrl.indexOf('?') === -1 ? '?' : '&') + 'bookable=' + c.bookable + '&' + p, { credentials: 'same-origin' })
+			.then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+				if (key !== self.qKey) { return; }
+				self.q = j || { ok: false, message: self.t.noQuote };
+				self.renderQuote();
+			}).catch(function () { if (key === self.qKey) { self.q = { ok: false, message: self.t.noQuote }; self.renderQuote(); } });
 	};
 
 	Widget.prototype.date = function (d) { return this.t.dowLong[(d.getDay() + 6) % 7] + ' ' + d.getDate() + ' ' + this.t.months[d.getMonth()].slice(0, 3) + ' ' + d.getFullYear(); };
 
 	Widget.prototype.renderSide = function () {
-		var c = this.cfg, t = this.t, q = this.quote(), self = this;
+		var t = this.t;
 		this.$a.textContent = this.a ? this.date(this.a) + (this.slots() && this.time ? ', ' + this.time : '') : t.select;
 		if (this.$b) { this.$b.textContent = this.b ? this.date(this.b) : t.select; }
-		if (!q) {
-			var from = this.slots() ? (c.slotPrice > 0 ? fill(c.perPerson ? t.fromPerPerson : t.fromSlot, this.money(c.slotPrice)) : '') : fill(t.fromNight, this.money(c.baseRate)) + (c.minNights > 1 ? ' ' + fill(t.minNightsNote, c.minNights) : '');
-			this.$quote.innerHTML = from ? '<p class="fw-bk__from">' + esc(from) + '</p>' : '';
-		} else if (q.slot) {
-			this.$quote.innerHTML = q.total > 0 ? '<table class="fw-bk__table"><tbody><tr class="fw-bk__total"><th scope="row">' + esc(t.total) + '</th><td>' + esc(this.money(q.total)) + '</td></tr></tbody></table>' : '';
-		} else {
-			var rows = q.lines.map(function (l) {
-				return '<tr><th scope="row">' + esc(fill(l.n === 1 ? t.night : t.nights, l.n)) + ' &times; ' + esc(self.money(l.rate)) + (l.name ? ' <small>' + esc(l.name) + '</small>' : '') + '</th><td>' + esc(self.money(l.n * l.rate)) + '</td></tr>';
-			}).join('');
-			this.$quote.innerHTML = '<table class="fw-bk__table"><tbody>' + rows +
-				(q.cleaning > 0 ? '<tr><th scope="row">' + esc(t.cleaning) + '</th><td>' + esc(this.money(q.cleaning)) + '</td></tr>' : '') +
-				'<tr class="fw-bk__total"><th scope="row">' + esc(t.total) + '</th><td>' + esc(this.money(q.total)) + '</td></tr></tbody></table>' +
-				(q.deposit > 0 ? '<p class="fw-bk__small">' + esc(fill(t.deposit, this.money(q.deposit))) + '</p>' : '') +
-				'<p class="fw-bk__small"><button type="button" class="fw-bk__link" data-reset>' + esc(t.clear) + '</button></p>';
-		}
+		this.requestQuote();
+		this.fetchChoices();
+		this.renderQuote();
 		this.sync();
+	};
+
+	Widget.prototype.fromLine = function () {
+		var c = this.cfg, t = this.t, ls = c.longStay || [], from;
+		from = this.slots() ? (c.slotPrice > 0 ? fill(c.perPerson ? t.fromPerPerson : t.fromSlot, this.money(c.slotPrice)) : '') : fill(t.fromNight, this.money(c.baseRate)) + (c.minNights > 1 ? ' ' + fill(t.minNightsNote, c.minNights) : '');
+		if (!this.slots() && ls.length) { from += ' ' + fill(fill(t.longStay, ls[ls.length - 1].percent), ls[ls.length - 1].nights); }
+		return from;
+	};
+
+	Widget.prototype.renderQuote = function () {
+		var t = this.t, q = this.q;
+		if (!q) {
+			var from = this.fromLine();
+			this.$quote.innerHTML = from ? '<p class="fw-bk__from">' + esc(from) + '</p>' : '';
+			return;
+		}
+		if (q.loading) { this.$quote.classList.add('is-loading'); return; }
+		this.$quote.classList.remove('is-loading');
+		if (!q.ok) { this.$quote.innerHTML = '<p class="fw-bk__small is-warn">' + esc(q.message || '') + '</p>'; return; }
+		var rows = (q.quote.rows || []).map(function (r) {
+			return '<tr><th scope="row">' + esc(r.label) + (r.note ? ' <small>' + esc(r.note) + '</small>' : '') + '</th><td>' + esc(r.amount) + '</td></tr>';
+		}).join('');
+		this.$quote.innerHTML = (q.quote.raw > 0 ? '<table class="fw-bk__table"><tbody>' + rows +
+			'<tr class="fw-bk__total"><th scope="row">' + esc(t.total) + '</th><td>' + esc(q.quote.total) + '</td></tr></tbody></table>' : '') +
+			(q.quote.deposit ? '<p class="fw-bk__small">' + esc(fill(t.deposit, q.quote.deposit)) + '</p>' : '') +
+			(this.slots() ? '' : '<p class="fw-bk__small"><button type="button" class="fw-bk__link" data-reset>' + esc(t.clear) + '</button></p>');
 	};
 
 	function boot() {

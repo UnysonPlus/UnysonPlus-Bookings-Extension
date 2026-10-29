@@ -14,6 +14,26 @@ $manifest['description'] = __(
 /**
  * Changelog ----------------------------------------------------------------
  *
+ * 1.0.5 - Export next to Import (Bookings -> Import / Export). Download the bookings and blocks, all or
+ *         one bookable, all / upcoming / past: as a CSV in the very columns the CSV import reads (plus
+ *         extras, deposit, paid, currency, created), or as a Bookings file (JSON, format
+ *         "unysonplus-bookings") with every bookable's settings, which the new "A Bookings file" import
+ *         source reads on another site. Any import now skips a booking whose reference is already here,
+ *         whichever source brought it, so a CSV after a Bookings file adds no duplicates.
+ *
+ * 1.0.4 - More ways to book (Bookings roadmap Phase 3). Rates: a weekend nightly rate (a season
+ *         still wins), long-stay discounts ("7 | 10" = 10% off from 7 nights, on the nightly part),
+ *         and priced extras the guest ticks (per stay, night, guest or guest-night; per booking or
+ *         person for slots), stored on the booking (column extras) and shown in every summary. The
+ *         visitor's calendar now shows the SERVER's quote (GET fw-bookings/v1/quote), so the page and
+ *         the stored price are one computation. Choice: one field can offer several bookables of the
+ *         same kind (option "Or let the visitor choose"); each is marked free or not for the chosen
+ *         dates (GET fw-bookings/v1/choices). Reminders and follow-ups: an email before a confirmed
+ *         booking starts and a thank-you after it ends, each with the owner's note, sent once by an
+ *         hourly job (columns reminded_at, thanked_at; CRM triggers bookings.reminder / bookings.ended).
+ *         Import (Bookings -> Import): a CSV of bookings, and any source a site registers through
+ *         fw_ext_bookings_import_sources (rooms, bookings, calendars), safe to run twice. Schema 1.2.0.
+ *
  * 1.0.2 - Paying online and the CRM (Bookings roadmap Phase 2, last batch). A bookable can take the
  *         whole price or a part of it (a percentage) online: the booking adds one line to the form's order
  *         (filter fw_ext_forms_order) and Forms' Take payment action charges it by card, PayPal or pay
@@ -51,7 +71,7 @@ $manifest['description'] = __(
  *         REST GET /fw-bookings/v1/availability; filter fw_ext_bookings_busy for other calendars.
  */
 
-$manifest['version']    = '1.0.3';
+$manifest['version']    = '1.0.5';
 $manifest['display']    = true;
 $manifest['standalone'] = true;
 $manifest['thumbnail']  = 'thumbnail.svg';
